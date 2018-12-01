@@ -8,10 +8,10 @@ db = MongoEngine()
 class Player(me.EmbeddedDocument):
     name = me.StringField(max_length=50)
     color = me.StringField(max_length=7, default='#424242')
+    sid = me.StringField(required=True)
 
 class Rooms(db.Document):
     board = me.ListField(me.ListField(me.StringField(max_length=1)))
     isOpen = me.BooleanField(default=True)
-    player1 = me.EmbeddedDocumentField(Player)
-    player2 = me.EmbeddedDocumentField(Player)
+    players = me.EmbeddedDocumentListField(Player)
     turn = me.BooleanField(default=True)

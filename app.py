@@ -1,12 +1,14 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
+from flask_socketio import SocketIO, join_room
 
 app = Flask(__name__)
+app.config['SECRET_KEY'] = 'reuvenKing!'
+socketio = SocketIO(app)
 
 app.config.from_object(__name__)
 app.config['MONGODB_SETTINGS'] = {'DB': 'Connect4'}
-app.config['SECRET_KEY'] = 'reuvenKing!'
-app.config['DEBUG'] = True
 
+app.config['DEBUG'] = True
 from models import db, Rooms, Player
 db.init_app(app)
 
@@ -19,15 +21,38 @@ def get_rooms():
    rooms = Rooms.objects.all()
    return jsonify(rooms), 200
 
-@app.route('/add_room')
-def add_room():
-   board = [[''] * 4] * 4
-   player1 = Player(name='Omer', color='#7B7B7B')
+@socketio.on('createRoom')
+def create_room(user_args):
 
-   room = Rooms(board=board, player1=player1)
+   board = [[''] * 4] * 4
+   player1 = Player(name=user_args['name'], color=user_args['color'], sid=request.sid)
+
+   room = Rooms(board=board, players=[player1])
    room.save()
-   return 'ok', 200
+
+   join_room(str(room.id))
+
+   socketio.emit("roomOpened", {'roomId': str(room.id)})
+   
+   return {id: room.id}
+
+@socketio.on('joinRoom')
+def join_room(room_id, user_args):
+   
+   room = Rooms.objects(id=room_id)
+   if room:
+      
+      if(len(room.players) == 2)
+         return 'Game is progress'
+
+      player = Player(name=user_args['name'], color=user_args['color'], sid=request.sid)
+      join_room(room_id)
+      socketio.emit("startGame", {'roomData': jsonify(room)}, room=room_id)
+   else:
+      return 'No such room'
+
+   
 
 if __name__ == '__main__':
     app.debug = app.config['DEBUG']
-    app.run('localhost')
+    socketio.run(app)
