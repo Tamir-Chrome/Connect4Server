@@ -60,4 +60,4 @@ def join_game_room(room_id, user_args):
 
 if __name__ == '__main__':
     app.debug = app.config['DEBUG']
-    socketio.run(app)
+    socketio.run(app, host='0.0.0.0')
