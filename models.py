@@ -6,12 +6,13 @@ import mongoengine as me
 db = MongoEngine()
 
 class Player(me.EmbeddedDocument):
-    name = me.StringField(max_length=50)
-    color = me.StringField(max_length=7, default='#424242')
-    sid = me.StringField(required=True)
+    name = db.StringField(max_length=50)
+    color = db.StringField(max_length=7, default='#424242')
+    sid = db.StringField(required=True)
+
 
 class Rooms(db.Document):
-    board = me.ListField(me.ListField(me.StringField(max_length=1)))
-    isOpen = me.BooleanField(default=True)
-    players = me.EmbeddedDocumentListField(Player)
-    turn = me.BooleanField(default=True)
+    board = db.ListField(db.ListField(db.StringField(max_length=1)))
+    isOpen = db.BooleanField(default=True)
+    players = db.EmbeddedDocumentListField(Player)
+    turn = db.BooleanField(default=True)
