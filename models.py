@@ -16,3 +16,5 @@ class Rooms(db.Document):
     isOpen = db.BooleanField(default=True)
     players = db.EmbeddedDocumentListField(Player)
     turn = db.BooleanField(default=True)
+    resultsTable = me.ListField(me.ListField(me.StringField(required=True)))
+    lastResultUpdate = me.DateTimeField(default=None)

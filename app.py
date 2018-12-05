@@ -4,6 +4,7 @@ import flask_socketio
 from flask_socketio import SocketIO, join_room, close_room
 import json
 from bson import ObjectId
+from datetime import datetime
 
 from utils import *
 
@@ -42,6 +43,63 @@ def room_mode(room_id):
     if room:
         return '0' if room.isOpen else '1', 200
     return '2', 404
+
+@app.route('/lastUpdate/<string:room_id>')
+def last_update(room_id):
+
+    last_date = request.args.get('date', None)
+    if not last_date:
+        return 'Missing date parameter', 400
+
+    is_valid = ObjectId.is_valid(room_id)
+    if not is_valid:
+        return 'Room id is not valid omer', 400
+
+    room = Rooms.objects(id=room_id)[0]
+    if room:
+
+        resultTable = room.resultsTable
+
+        data = {
+            'result': room.resultsTable,
+            'is_uptodate': False
+        }
+        if room.lastResultUpdate:
+
+            # parse string to datetime
+            datetime_last_date = datetime.strptime(last_date, '%d.%m.%Y %H:%M:%S')
+
+            # check if up to date
+            if datetime_last_date >= room.lastResultUpdate:
+                data['results'] = None
+                data['is_uptodate'] = True
+
+        return jsonify({'data': data}), 200
+
+    else:
+        return 'No such room', 404
+
+
+@app.route('/updateResults/<string:room_id>', methods = ['POST'])
+def method_name(room_id):
+
+    new_results_table = request.args.get('data', None)
+    if not new_results_table:
+        return 'Missing data parameter', 400
+
+    is_valid = ObjectId.is_valid(room_id)
+    if not is_valid:
+        return 'Room id is not valid omer', 400
+
+    room = Rooms.objects(id=room_id)[0]
+    if not room:
+        return 'No such room', 404
+
+    # All good:
+    room.resultsTable = new_results_table
+    room.save()
+    
+    return jsonify({'data': data}), 200
 
 @socketio.on('getViewRoom')
 def to_view_room(room_id):
@@ -83,7 +141,7 @@ def create_room(user_args):
 
     join_room(str(room.id))
 
-    socketio.emit("roomOpened", {'data': str(room.id)}, room=request.sid)
+    socketio.emit("roomOpened", {'data': str(room.id), "status": 200}, room=request.sid)
 
 
 @socketio.on('joinRoom')
