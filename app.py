@@ -5,6 +5,7 @@ from flask_socketio import SocketIO, join_room, close_room
 import json
 from bson import ObjectId
 from datetime import datetime
+from flask_cors import CORS
 
 from utils import *
 
@@ -18,6 +19,7 @@ app.config['MONGODB_SETTINGS'] = {'DB': 'Connect4'}
 app.config['DEBUG'] = True
 db.init_app(app)
 
+cors = CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 @app.route("/")
 def hello():
@@ -47,6 +49,7 @@ def room_mode(room_id):
 @app.route('/lastUpdate/<string:room_id>')
 def last_update(room_id):
 
+    # TODO: send results table in getViewRoom
     last_date = request.args.get('date', None)
     if not last_date:
         return 'Missing date parameter', 400
@@ -80,26 +83,30 @@ def last_update(room_id):
         return 'No such room', 404
 
 
-@app.route('/updateResults/<string:room_id>', methods = ['POST'])
+@app.route('/updateResults/<string:room_id>', methods = ['PUT', 'OPTIONS', 'POST'])
 def method_name(room_id):
 
-    new_results_table = request.args.get('data', None)
-    if not new_results_table:
-        return 'Missing data parameter', 400
+    if str(request.method) != 'POST':
+        return 'NOT OPTIONS', 400
 
+    data = json.loads(request.get_data().decode())
+
+    if 'newBoard' not in data:
+        return 'Missing data parameter', 401
+    
     is_valid = ObjectId.is_valid(room_id)
     if not is_valid:
-        return 'Room id is not valid omer', 400
+        return 'Room id is not valid omer', 402
 
     room = Rooms.objects(id=room_id)[0]
     if not room:
         return 'No such room', 404
 
     # All good:
-    room.resultsTable = new_results_table
+    room.resultsTable = data['newBoard']
     room.save()
     
-    return jsonify({'data': data}), 200
+    return 'goods', 200
 
 @socketio.on('getViewRoom')
 def to_view_room(room_id):
@@ -120,6 +127,8 @@ def to_view_room(room_id):
             return 
 
         room_json = room_to_json(room)
+        room_json['resultsTable'] = room.resultsTable
+        room_json['gameEnded'] = room.gameEnded
 
         socketio.emit("viewRoom", {"data": room_json, "status": 200}, room=request.sid)
         return
@@ -156,7 +165,7 @@ def join_game_room(room_id, user_args):
     if room:
 
         if not room.isOpen:
-            socketio.emit('startGame', {'data': 'Game in progress', "status": 409}, room=request.sid)
+            socketio.emit('startGame', {'data': 'Game in progress', "status": 410}, room=request.sid)
             app.logger.info('progress')
             return 
 
@@ -180,7 +189,7 @@ def join_game_room(room_id, user_args):
 
 
 @socketio.on('doTurn')
-def do_turn(room_id, player_id, new_board):
+def do_turn(room_id, player_id, new_board, game_ended):
 
     is_valid = ObjectId.is_valid(room_id)
     if not is_valid:
@@ -192,23 +201,61 @@ def do_turn(room_id, player_id, new_board):
 
         room.board = new_board
         room.turn = not room.turn
+        room.gameEnded = game_ended
+
         room.save()
 
         room_json = {
             "id": room_id,
             "board": new_board,
-            "turn": room.turn
+            "turn": room.turn,
+            "resultsTable": room.resultsTable,
+            "gameEnded": game_ended
         }
 
         socketio.emit("gameUpdate", {'data': room_json, 'status': 200}, room=room_id)
     else:
         socketio.emit('gameUpdate', {'data': 'No room', 'status': 404}, room=request.sid)
 
+@socketio.on('offerNewGame')
+def offer_name_game(room_id):
+
+    is_valid = ObjectId.is_valid(room_id)
+    if not is_valid:
+        socketio.emit("newGameOffer", {"data": 'This is not a valid room id bobo', 'status': 400}, room=request.sid)
+        return
+
+    room = Rooms.objects(id=room_id)[0]
+    if not room:
+        socketio.emit('newGameOffer', {'data': 'No room', 'status': 404}, room=request.sid)
+
+    # default
+    sid_target = room.players[0].sid
+    # check if the first player is the asker, if he is, set the other player as target
+    if request.sid == room.players[0].sid:
+        sid_target = room.players[1].sid
+
+    socketio.emit('newGameOffer', {'status': 200} ,room=sid_target)
+
+@socketio.on('newGameOfferResponse')
+def new_offer_response(room_id, response):
+
+    is_valid = ObjectId.is_valid(room_id)
+    if not is_valid:
+        socketio.emit("offerResult", {"data": 'This is not a valid room id bobo', 'status': 400}, room=request.sid)
+        return
+
+    room = Rooms.objects(id=room_id)[0]
+    if not room:
+        socketio.emit('offerResult', {'data': 'No room', 'status': 404}, room=request.sid)
+
+    socketio.emit('offerResult', {'data': response, 'status': 200}, room=room_id)
+    
 
 @socketio.on('closeRoom')
-def close_room(room_id):
+def close_the_room(room_id):
 
-    # TODO: check if the player closing the room is the creator
+    # TODO: check if the player closing the room is the creator status 403
 
     is_valid = ObjectId.is_valid(room_id)
     if not is_valid:
@@ -236,7 +283,8 @@ def default_error_handler(e):
     print("Error:", e)
     print("Event: " + request.event["message"] + ": " + str(request.event["args"]))
     # TODO: Remove error message from emit when going to prod
-    socketio.emit(EVENTS[request.event["message"]], {"data": str(e), "status": 500}, room=request.sid)
+    if request.event["message"] in EVENTS:
+        socketio.emit(EVENTS[request.event["message"]], {"data": str(e), "status": 500}, room=request.sid)
 
 # Log http request
 @app.before_request

@@ -18,5 +18,7 @@ EVENTS = {
     'joinRoom': 'startGame',
     'doTurn': 'gameUpdate',
     'closeRoom': 'closedRoom',
-    'getViewRoom': 'viewRoom'
+    'getViewRoom': 'viewRoom',
+    'offerNewGame': 'newGameOffer',
+    'newGameOfferResponse': 'offerResult'
 }
