@@ -55,7 +55,7 @@ def room_mode(room_id):
     if not is_valid:
         return 'Room id is not valid omer', 400
 
-    room = Rooms.objects(id=room_id)[0]
+    room = Rooms.objects(id=room_id).first()
     
     if room:
         return '0' if room.isOpen else '1', 200
@@ -73,7 +73,7 @@ def last_update(room_id):
     if not is_valid:
         return 'Room id is not valid omer', 400
 
-    room = Rooms.objects(id=room_id)[0]
+    room = Rooms.objects(id=room_id).first()
     if room:
 
         resultTable = room.resultsTable
@@ -113,7 +113,7 @@ def method_name(room_id):
     if not is_valid:
         return 'Room id is not valid omer', 402
 
-    room = Rooms.objects(id=room_id)[0]
+    room = Rooms.objects(id=room_id).first()
     if not room:
         return 'No such room', 404
     
@@ -131,7 +131,7 @@ def to_view_room(room_id):
         socketio.emit("viewRoom", {"data": 'This is not a valid room id bobo', "status": 400}, room=request.sid)
         return 
 
-    room = Rooms.objects(id=room_id)[0]
+    room = Rooms.objects(id=room_id).first()
 
     if room:
 
@@ -176,7 +176,7 @@ def join_game_room(room_id, user_args):
         socketio.emit("startGame", {"data": 'This is not a valid room id bobo', "status": 400}, room=request.sid)
         return 
 
-    room = Rooms.objects(id=room_id)[0]
+    room = Rooms.objects(id=room_id).first()
     if room:
 
         if not room.isOpen:
@@ -212,9 +212,10 @@ def do_turn(room_id, player_id, new_board, game_ended):
         return 
 
 
-    room = Rooms.objects(id=room_id)[0]
+    room = Rooms.objects(id=room_id).first()
     if not room:
         socketio.emit('gameUpdate', {'data': 'No room', 'status': 404}, room=request.sid)
+        return
 
 
     room.board = new_board
@@ -243,12 +244,14 @@ def offer_name_game(room_id):
         socketio.emit("newGameOffer", {"data": 'This is not a valid room id bobo', 'status': 400}, room=request.sid)
         return
 
-    room = Rooms.objects(id=room_id)[0]
+    room = Rooms.objects(id=room_id).first()
     if not room:
         socketio.emit('newGameOffer', {'data': 'No room', 'status': 404}, room=request.sid)
+        return
 
     if not room.gameEnded:
         socketio.emit('newGameOffer', {'data': 'Game didnt end yet', 'status': 401}, room=request.sid)
+        return
 
 
     # default
@@ -267,9 +270,10 @@ def new_offer_response(room_id, response):
         socketio.emit("offerResult", {"data": 'This is not a valid room id bobo', 'status': 400}, room=request.sid)
         return
 
-    room = Rooms.objects(id=room_id)[0]
+    room = Rooms.objects(id=room_id).first()
     if not room:
         socketio.emit('offerResult', {'data': 'No room', 'status': 404}, room=request.sid)
+        return
 
     if response:
         room.gameEnded = False
@@ -285,9 +289,10 @@ def close_the_room(room_id, reason):
         socketio.emit("roomClosed", {"data": 'This is not a valid room id bobo', "status": 404}, room=request.sid)
         return
 
-    room = Rooms.objects(id=room_id)[0]
+    room = Rooms.objects(id=room_id).first()
     if not room:
         socketio.emit("roomClosed", {"data": 'No such room', "status": 404}, room=request.sid)
+        return
 
     socketio.emit("roomClosed", {"data": reason, "status": 200}, room=room_id)
 
