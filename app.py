@@ -16,10 +16,9 @@ socketio = SocketIO(app, logger=True)
 app.config.from_object(__name__)
 app.config['MONGODB_SETTINGS'] = {'DB': 'Connect4'}
 
-app.config['DEBUG'] = True
 db.init_app(app)
 
-cors = CORS(app, resources={r"/api/*": {"origins": "*"}})
+cors = CORS(app, resources={r"/*": {"origins": "*"}})
 
 @app.route("/")
 def hello():
@@ -27,10 +26,26 @@ def hello():
     return 'reuven'
 
 
-@app.route('/rooms')
+@app.route('/leaderboard')
 def get_rooms():
 
-    rooms = Rooms.objects.all()
+    players = {}
+    resultsTable = Rooms.objects.only('resultsTable')
+    for results in resultsTable:
+        for result in results['resultsTable']:
+            name = result[0]
+            if name not in players:
+                players[name] = 1
+            else:
+                players[name] += 1
+    
+    players_leader = [(k, players[k]) for k in sorted(players, key=players.get, reverse=True)]
+
+    return jsonify(players_leader), 200
+
+@app.route('/games-list')
+def get_games_list():
+    rooms = Rooms.objects.exclude('board','turn').all()
     return jsonify(rooms), 200
 
 @app.route('/roomMode/<string:room_id>')
@@ -101,11 +116,11 @@ def method_name(room_id):
     room = Rooms.objects(id=room_id)[0]
     if not room:
         return 'No such room', 404
-
+    
     # All good:
     room.resultsTable = data['newBoard']
     room.save()
-    
+
     return 'goods', 200
 
 @socketio.on('getViewRoom')
@@ -124,7 +139,7 @@ def to_view_room(room_id):
 
         if room.isOpen:
             socketio.emit("viewRoom", {"data": 'Wait for game to start! tembel', "status": 202}, room=request.sid)
-            return 
+            return
 
         room_json = room_to_json(room)
         room_json['resultsTable'] = room.resultsTable
@@ -168,7 +183,7 @@ def join_game_room(room_id, user_args):
             socketio.emit('startGame', {'data': 'Game in progress', "status": 410}, room=request.sid)
             app.logger.info('progress')
             return 
-
+        
         if user_args['color'] == room.players[0]['color']:
             socketio.emit('startGame', {"data": 'Same color motek!', "status": 409}, room=request.sid)
             app.logger.info('color')
@@ -196,26 +211,29 @@ def do_turn(room_id, player_id, new_board, game_ended):
         socketio.emit("gameUpdate", {"data": 'This is not a valid room id bobo', 'status': 400}, room=request.sid)
         return 
 
+
     room = Rooms.objects(id=room_id)[0]
-    if room:
-
-        room.board = new_board
-        room.turn = not room.turn
-        room.gameEnded = game_ended
-
-        room.save()
-
-        room_json = {
-            "id": room_id,
-            "board": new_board,
-            "turn": room.turn,
-            "resultsTable": room.resultsTable,
-            "gameEnded": game_ended
-        }
-
-        socketio.emit("gameUpdate", {'data': room_json, 'status': 200}, room=room_id)
-    else:
+    if not room:
         socketio.emit('gameUpdate', {'data': 'No room', 'status': 404}, room=request.sid)
+
+
+    room.board = new_board
+    room.turn = not room.turn
+    room.gameEnded = game_ended
+
+    room.save()
+
+    room_json = {
+        "id": room_id,
+        "board": new_board,
+        "turn": room.turn,
+        "resultsTable": room.resultsTable,
+        "gameEnded": game_ended
+    }
+
+    socketio.emit("gameUpdate", {'data': room_json, 'status': 200}, room=room_id)
+    
+        
 
 @socketio.on('offerNewGame')
 def offer_name_game(room_id):
@@ -228,6 +246,10 @@ def offer_name_game(room_id):
     room = Rooms.objects(id=room_id)[0]
     if not room:
         socketio.emit('newGameOffer', {'data': 'No room', 'status': 404}, room=request.sid)
+
+    if not room.gameEnded:
+        socketio.emit('newGameOffer', {'data': 'Game didnt end yet', 'status': 401}, room=request.sid)
+
 
     # default
     sid_target = room.players[0].sid
@@ -249,32 +271,47 @@ def new_offer_response(room_id, response):
     if not room:
         socketio.emit('offerResult', {'data': 'No room', 'status': 404}, room=request.sid)
 
+    if response:
+        room.gameEnded = False
+
     socketio.emit('offerResult', {'data': response, 'status': 200}, room=room_id)
     
 
 @socketio.on('closeRoom')
-def close_the_room(room_id):
-
-    # TODO: check if the player closing the room is the creator status 403
+def close_the_room(room_id, reason):
 
     is_valid = ObjectId.is_valid(room_id)
     if not is_valid:
-        socketio.emit("closedRoom", {"data": 'This is not a valid room id bobo', "status": 404}, room=request.sid)
+        socketio.emit("roomClosed", {"data": 'This is not a valid room id bobo', "status": 404}, room=request.sid)
         return
 
     room = Rooms.objects(id=room_id)[0]
-    if room:
+    if not room:
+        socketio.emit("roomClosed", {"data": 'No such room', "status": 404}, room=request.sid)
 
-        # This is not my function, its a function of Socketio that implements rooms of sid
-        close_room(room_id)
+    socketio.emit("roomClosed", {"data": reason, "status": 200}, room=room_id)
 
-        # Delete room from data base
-        room.delete()
+    # This is not my function, its a function of Socketio that implements rooms of sid
+    close_room(room_id)
 
-        socketio.emit("closedRoom", {"data": 'Room closed', "status": 200}, room=room_id)
+    # Delete room from data base
+    room.delete()
 
-    else:
-        socketio.emit("closedRoom", {"data": 'No such room', "status": 404}, room=request.sid)
+@socketio.on('disconnect')
+def handle_disconnect():
+    room_to_close = Rooms.objects(players__match={'sid': request.sid}).only('id').first()
+
+    # player was not in a room
+    if not room_to_close:
+        return
+
+    room_id = str(room_to_close['id'])
+
+    socketio.emit("roomClosed", {"data": 'Player exits room', "status": 200}, room=room_id)
+
+    close_room(room_id)
+
+    room_to_close.delete()
 
 
 # Handle socketio error
@@ -289,8 +326,10 @@ def default_error_handler(e):
 # Log http request
 @app.before_request
 def log_request_info():
-    app.logger.debug('\n' + '~'*44 +'\n%s from %s:\n%s\n' + '~'*44, request.url, request.access_route[0], request.get_data())
+    app.logger.debug('\n' + '~'*44 +'\n%s from %s:\n%s\n' + '~'*44, request.url, request.access_route[0], request.get_data() if request.get_data() else '')
 
+
+    
 
 if __name__ == '__main__':
     app.debug = app.config['DEBUG']
