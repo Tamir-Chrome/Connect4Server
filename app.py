@@ -50,6 +50,7 @@ def get_games_list():
     rooms = Rooms.objects.exclude('board','turn').all()
     return jsonify(rooms), 200
 
+# get room mode - open, running
 @app.route('/roomMode/<string:room_id>')
 def room_mode(room_id):
 
@@ -63,6 +64,7 @@ def room_mode(room_id):
         return '0' if room.isOpen else '1', 200
     return '2', 404
 
+# get last update of the game room
 @app.route('/lastUpdate/<string:room_id>')
 def last_update(room_id):
 
@@ -99,7 +101,7 @@ def last_update(room_id):
     else:
         return 'No such room', 404
 
-
+# update results table
 @app.route('/updateResults/<string:room_id>', methods = ['PUT', 'OPTIONS', 'POST'])
 def method_name(room_id):
 
@@ -125,6 +127,7 @@ def method_name(room_id):
 
     return 'goods', 200
 
+# view a room (without playing)
 @socketio.on('getViewRoom')
 def to_view_room(room_id):
 
@@ -155,6 +158,7 @@ def to_view_room(room_id):
         socketio.emit("viewRoom", {"data": 'No such room homed', "status": 404}, room=request.sid)
 
 
+# create a room
 @socketio.on('createRoom')
 def create_room(user_args):
 
@@ -169,7 +173,7 @@ def create_room(user_args):
 
     socketio.emit("roomOpened", {'data': str(room.id), "status": 200}, room=request.sid)
 
-
+# join a room
 @socketio.on('joinRoom')
 def join_game_room(room_id, user_args):
 
