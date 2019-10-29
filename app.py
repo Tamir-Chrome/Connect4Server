@@ -185,33 +185,42 @@ def create_room(user_args):
 @socketio.on('joinRoom')
 def join_game_room(room_id, user_args):
 
+    # valide room
     is_valid = ObjectId.is_valid(room_id)
     if not is_valid:
         socketio.emit("startGame", {"data": 'This is not a valid room id bobo', "status": 400}, room=request.sid)
         return 
 
+    # get room from db
     room = Rooms.objects(id=room_id).first()
     if room:
 
+        # if room not open
         if not room.isOpen:
+            # signal game start
             socketio.emit('startGame', {'data': 'Game in progress', "status": 410}, room=request.sid)
             app.logger.info('progress')
             return 
         
+        # check if player2 chose same color as player1
         if user_args['color'] == room.players[0]['color']:
             socketio.emit('startGame', {"data": 'Same color motek!', "status": 409}, room=request.sid)
             app.logger.info('color')
             return
 
+        # add player to db
         player = Player(name=user_args['name'],
                         color=user_args['color'], sid=request.sid)
         room.players.append(player)
         room.isOpen = False
         room.save()
+
+        # add players to room session
         join_room(room_id)
         
         room_json = room_to_json(room)
 
+        # signal game start
         socketio.emit("startGame", {'data': room_json, "status": 200}, room=room_id)
     else:
         socketio.emit("startGame", {'data': 'No such room', "status": 404}, room=request.sid)
