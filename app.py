@@ -20,12 +20,13 @@ db.init_app(app)
 
 cors = CORS(app, resources={r"/*": {"origins": "*"}})
 
+# server home screen
 @app.route("/")
 def hello():
 
     return 'reuven'
 
-
+# shows leaderboard of top scored players
 @app.route('/leaderboard')
 def get_rooms():
 
@@ -43,6 +44,7 @@ def get_rooms():
 
     return jsonify(players_leader), 200
 
+# return game rooms that are up and running
 @app.route('/games-list')
 def get_games_list():
     rooms = Rooms.objects.exclude('board','turn').all()
