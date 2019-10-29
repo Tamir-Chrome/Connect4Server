@@ -158,15 +158,23 @@ def to_view_room(room_id):
 @socketio.on('createRoom')
 def create_room(user_args):
 
+    # init game board
     board = [[''] * 9] * 9
+    
+    # get player1 from 
     player1 = Player(name=user_args['name'],
                      color=user_args['color'], sid=request.sid)
 
+    # add room to database
     room = Rooms(board=board, players=[player1])
+
+    # save in db
     room.save()
 
+    # add player to room session
     join_room(str(room.id))
 
+    # signal room open
     socketio.emit("roomOpened", {'data': str(room.id), "status": 200}, room=request.sid)
 
 
